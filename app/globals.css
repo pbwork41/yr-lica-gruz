@@ -1,0 +1,14 @@
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: #f7f6f1;
+  color: #12211c;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+.num { font-variant-numeric: tabular-nums; }
+input, select, button { font: inherit; color: inherit; }
+.fld { width: 100%; padding: 9px 11px; border: 1px solid #e3e1d8; border-radius: 9px; background: #fff; }
+.fld:focus { outline: 2px solid #2f6f4e; outline-offset: -1px; }
+.chk { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border: 1px solid #e3e1d8; border-radius: 9px; cursor: pointer; font-size: 13px; user-select: none; background: #fff; }
+.chk.on { border-color: #2f6f4e; background: #eaf2ec; color: #2f6f4e; font-weight: 600; }
+table tr:hover td { background: #fbfbf8; }
