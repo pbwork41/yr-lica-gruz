@@ -19,7 +19,7 @@ export function Field({ label, children }) {
 export function Box({ on }) {
   return (
     <span style={{ width: 18, height: 18, borderRadius: 5, border: `1.5px solid ${on ? C.moss : C.line}`, background: on ? C.moss : "#fff", color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, flexShrink: 0 }}>
-      {on ? "\u2713" : ""}
+      {on ? "✓" : ""}
     </span>
   );
 }

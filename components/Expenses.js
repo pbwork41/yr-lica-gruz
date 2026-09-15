@@ -38,44 +38,44 @@ export default function Expenses({ expenses, onAdd, onDelete }) {
       <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 13, padding: "14px 18px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <input className="fld" style={{ width: 150 }} type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-          <span style={{ color: C.muted }}>{"\u2014"}</span>
+          <span style={{ color: C.muted }}>{"—"}</span>
           <input className="fld" style={{ width: 150 }} type="date" value={to} onChange={(e) => setTo(e.target.value)} />
         </div>
         <button onClick={() => setAdding(!adding)} style={{ marginLeft: "auto", background: C.moss, color: "#fff", border: "none", borderRadius: 10, padding: "10px 18px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
-          {adding ? "\u0417\u0430\u043A\u0440\u044B\u0442\u044C" : "+ \u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u0440\u0430\u0441\u0445\u043E\u0434"}
+          {adding ? "Закрыть" : "+ Добавить расход"}
         </button>
       </div>
 
       {adding && (
         <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 13, padding: 18, display: "grid", gridTemplateColumns: "auto 1fr 2fr 1fr auto", gap: 12, alignItems: "end" }}>
-          <Field label="\u0414\u0430\u0442\u0430"><input className="fld" type="date" value={f.expense_date} onChange={(e) => setF({ ...f, expense_date: e.target.value })} /></Field>
-          <Field label="\u041A\u0430\u0442\u0435\u0433\u043E\u0440\u0438\u044F">
+          <Field label="Дата"><input className="fld" type="date" value={f.expense_date} onChange={(e) => setF({ ...f, expense_date: e.target.value })} /></Field>
+          <Field label="Категория">
             <select className="fld" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })}>
               {Object.entries(EXPENSE_CATS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select>
           </Field>
-          <Field label="\u041E\u043F\u0438\u0441\u0430\u043D\u0438\u0435"><input className="fld" value={f.title} placeholder="\u043D\u0430\u043F\u0440. \u0417\u0430\u0440\u043F\u043B\u0430\u0442\u0430 \u0434\u0438\u0441\u043F\u0435\u0442\u0447\u0435\u0440\u0430" onChange={(e) => setF({ ...f, title: e.target.value })} /></Field>
-          <Field label="\u0421\u0443\u043C\u043C\u0430, \u20BD"><input className="fld" type="number" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} /></Field>
-          <button onClick={submit} style={{ background: C.moss, color: "#fff", border: "none", borderRadius: 10, padding: "10px 18px", fontSize: 14, fontWeight: 600, cursor: "pointer", height: 40 }}>\u0421\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C</button>
-          {f.category === "ads" && <div style={{ gridColumn: "1/6", fontSize: 12.5, color: C.gold }}>\u0420\u0435\u043A\u043B\u0430\u043C\u0430 \u0441\u043F\u0438\u0448\u0435\u0442\u0441\u044F \u0438\u0437 \u0440\u0435\u043A\u043B\u0430\u043C\u043D\u043E\u0433\u043E \u0444\u043E\u043D\u0434\u0430, \u0430 \u043D\u0435 \u0438\u0437 \u043F\u0440\u0438\u0431\u044B\u043B\u0438.</div>}
+          <Field label="Описание"><input className="fld" value={f.title} placeholder="напр. Зарплата диспетчера" onChange={(e) => setF({ ...f, title: e.target.value })} /></Field>
+          <Field label="Сумма, ₽"><input className="fld" type="number" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} /></Field>
+          <button onClick={submit} style={{ background: C.moss, color: "#fff", border: "none", borderRadius: 10, padding: "10px 18px", fontSize: 14, fontWeight: 600, cursor: "pointer", height: 40 }}>Сохранить</button>
+          {f.category === "ads" && <div style={{ gridColumn: "1/6", fontSize: 12.5, color: C.gold }}>Реклама спишется из рекламного фонда, а не из прибыли.</div>}
         </div>
       )}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 14 }}>
-        <Stat label="\u0412\u0441\u0435\u0433\u043E \u0440\u0430\u0441\u0445\u043E\u0434\u043E\u0432 \u0437\u0430 \u043F\u0435\u0440\u0438\u043E\u0434" value={rub(total)} />
-        <Stat label="\u0418\u0437 \u043F\u0440\u0438\u0431\u044B\u043B\u0438 (\u043E\u0431\u0449\u0438\u0435)" value={rub(generalTotal)} sub="\u0417\u041F, \u0441\u0432\u044F\u0437\u044C, \u0430\u0440\u0435\u043D\u0434\u0430\u2026" accent={C.clay} />
-        <Stat label="\u0418\u0437 \u0440\u0435\u043A\u043B\u0430\u043C\u043D\u043E\u0433\u043E \u0444\u043E\u043D\u0434\u0430" value={rub(adsTotal)} sub="\u0440\u0435\u043A\u043B\u0430\u043C\u0430" accent={C.gold} />
+        <Stat label="Всего расходов за период" value={rub(total)} />
+        <Stat label="Из прибыли (общие)" value={rub(generalTotal)} sub="ЗП, связь, аренда…" accent={C.clay} />
+        <Stat label="Из рекламного фонда" value={rub(adsTotal)} sub="реклама" accent={C.gold} />
       </div>
 
       <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 13, overflow: "hidden" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
           <thead>
             <tr style={{ background: C.paper, textAlign: "left", color: C.muted, fontSize: 12.5 }}>
-              <th style={th}>\u0414\u0430\u0442\u0430</th><th style={th}>\u041A\u0430\u0442\u0435\u0433\u043E\u0440\u0438\u044F</th><th style={th}>\u041E\u043F\u0438\u0441\u0430\u043D\u0438\u0435</th><th style={thR}>\u0421\u0443\u043C\u043C\u0430</th><th style={thR}></th>
+              <th style={th}>Дата</th><th style={th}>Категория</th><th style={th}>Описание</th><th style={thR}>Сумма</th><th style={thR}></th>
             </tr>
           </thead>
           <tbody>
-            {list.length === 0 && <tr><td colSpan={5} style={{ ...td, textAlign: "center", color: C.muted }}>\u041D\u0435\u0442 \u0440\u0430\u0441\u0445\u043E\u0434\u043E\u0432 \u0437\u0430 \u043F\u0435\u0440\u0438\u043E\u0434</td></tr>}
+            {list.length === 0 && <tr><td colSpan={5} style={{ ...td, textAlign: "center", color: C.muted }}>Нет расходов за период</td></tr>}
             {list.map((e) => (
               <tr key={e.id} style={{ borderTop: `1px solid ${C.line}` }}>
                 <td style={{ ...td, color: C.muted }} className="num">{fmtDate(e.expense_date)}</td>
@@ -87,7 +87,7 @@ export default function Expenses({ expenses, onAdd, onDelete }) {
                 <td style={td}>{e.title}</td>
                 <td style={{ ...tdR, fontWeight: 600 }} className="num">{rub(e.amount)}</td>
                 <td style={tdR}>
-                  <button onClick={() => onDelete(e.id)} style={{ border: "none", background: "transparent", color: C.muted, cursor: "pointer", fontSize: 16 }}>{"\u00D7"}</button>
+                  <button onClick={() => onDelete(e.id)} style={{ border: "none", background: "transparent", color: C.muted, cursor: "pointer", fontSize: 16 }}>{"×"}</button>
                 </td>
               </tr>
             ))}

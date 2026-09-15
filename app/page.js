@@ -9,7 +9,6 @@ export default function Page() {
 
   useEffect(() => {
     setMounted(true);
-    // Импортируем supabase и компоненты только в браузере
     Promise.all([
       import("../lib/supabase"),
       import("./login/Login"),
