@@ -13,22 +13,29 @@ export default function Workspace({ session }) {
   const [orders, setOrders] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [cps, setCps] = useState([]);
+  const [services, setServices] = useState([]);
+  const [cpServices, setCpServices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   async function loadAll() {
     setLoading(true); setError("");
-    const [o, e, c] = await Promise.all([
+    const [o, e, c, s, cs] = await Promise.all([
       supabase.from("orders").select("*").order("order_date", { ascending: false }),
       supabase.from("expenses").select("*").order("expense_date", { ascending: false }),
       supabase.from("counterparties").select("*").order("name"),
+      supabase.from("services").select("*").order("name"),
+      supabase.from("counterparty_services").select("*"),
     ]);
-    if (o.error || e.error || c.error) {
-      setError((o.error || e.error || c.error).message);
+    const anyErr = o.error || e.error || c.error || s.error || cs.error;
+    if (anyErr) {
+      setError(anyErr.message);
     } else {
       setOrders(o.data || []);
       setExpenses(e.data || []);
       setCps(c.data || []);
+      setServices(s.data || []);
+      setCpServices(cs.data || []);
     }
     setLoading(false);
   }
@@ -83,14 +90,38 @@ export default function Workspace({ session }) {
     if (error) return alert("Ошибка: " + error.message);
     loadAll();
   };
-  const saveCp = async (cp) => {
+  const saveCp = async (cp, cpSvcRates) => {
+    // cp — данные контрагента; cpSvcRates — [{service_id, rate_client, payout_worker}]
+    let cpId = cp.id;
     if (cp.id) {
       const { error } = await supabase.from("counterparties").update(cp).eq("id", cp.id);
       if (error) return alert("Ошибка: " + error.message);
     } else {
-      const { error } = await supabase.from("counterparties").insert(cp);
+      const { data, error } = await supabase.from("counterparties").insert(cp).select().single();
       if (error) return alert("Ошибка: " + error.message);
+      cpId = data.id;
     }
+    // сохраняем ставки по услугам (upsert по паре контрагент+услуга)
+    if (cpSvcRates && cpSvcRates.length) {
+      const rows = cpSvcRates
+        .filter((r) => r.rate_client != null || r.payout_worker != null)
+        .map((r) => ({ counterparty_id: cpId, service_id: r.service_id, rate_client: r.rate_client, payout_worker: r.payout_worker }));
+      if (rows.length) {
+        const { error } = await supabase.from("counterparty_services").upsert(rows, { onConflict: "counterparty_id,service_id" });
+        if (error) return alert("Ошибка услуг: " + error.message);
+      }
+    }
+    loadAll();
+  };
+
+  const addService = async (name) => {
+    const { error } = await supabase.from("services").insert({ name });
+    if (error) return alert("Ошибка: " + error.message);
+    loadAll();
+  };
+  const deleteService = async (id) => {
+    const { error } = await supabase.from("services").delete().eq("id", id);
+    if (error) return alert("Ошибка: " + error.message);
     loadAll();
   };
 
@@ -129,7 +160,8 @@ export default function Workspace({ session }) {
             {tab === "orders" && <Orders rows={rows} cps={cps} onSave={saveOrder} onDelete={deleteOrder} />}
             {tab === "dashboard" && <Dashboard rows={rows} byCp={byCp} expenses={expenses} />}
             {tab === "expenses" && <Expenses expenses={expenses} onAdd={saveExpense} onDelete={deleteExpense} />}
-            {tab === "clients" && <Clients byCp={byCp} cps={cps} onSave={saveCp} />}
+            {tab === "clients" && <Clients byCp={byCp} cps={cps} onSave={saveCp}
+              services={services} cpServices={cpServices} onAddService={addService} onDeleteService={deleteService} />}
           </>
         )}
       </div>

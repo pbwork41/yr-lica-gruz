@@ -51,3 +51,53 @@ export const th = { padding: "12px 14px", fontWeight: 500 };
 export const thR = { ...th, textAlign: "right" };
 export const td = { padding: "12px 14px" };
 export const tdR = { ...td, textAlign: "right" };
+
+// Поле выбора с поиском (автодополнение). options: [{value, label, sub}]
+export function SearchSelect({ value, onChange, options, placeholder }) {
+  const [open, setOpen] = React.useState(false);
+  const [q, setQ] = React.useState("");
+  const wrapRef = React.useRef(null);
+  const selected = options.find((o) => o.value === value);
+
+  React.useEffect(() => {
+    const onDoc = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  const ql = q.trim().toLowerCase();
+  const filtered = ql
+    ? options.filter((o) => (o.label + " " + (o.sub || "")).toLowerCase().includes(ql))
+    : options;
+
+  return (
+    <div ref={wrapRef} style={{ position: "relative" }}>
+      <div className="fld" onClick={() => { setOpen(true); setQ(""); }}
+        style={{ cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", minHeight: 40 }}>
+        <span style={{ color: selected ? C.ink : C.muted }}>
+          {selected ? selected.label : (placeholder || "Выберите…")}
+        </span>
+        <span style={{ color: C.muted, fontSize: 12 }}>▾</span>
+      </div>
+      {open && (
+        <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: C.card, border: `1px solid ${C.line}`, borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.12)", zIndex: 50, overflow: "hidden" }}>
+          <div style={{ padding: 8, borderBottom: `1px solid ${C.line}` }}>
+            <input autoFocus className="fld" placeholder="Поиск…" value={q} onChange={(e) => setQ(e.target.value)} />
+          </div>
+          <div style={{ maxHeight: 240, overflowY: "auto" }}>
+            {filtered.length === 0 && <div style={{ padding: "10px 12px", color: C.muted, fontSize: 13 }}>Ничего не найдено</div>}
+            {filtered.map((o) => (
+              <div key={o.value} onClick={() => { onChange(o.value); setOpen(false); }}
+                style={{ padding: "9px 12px", cursor: "pointer", fontSize: 14, background: o.value === value ? C.mossSoft : "transparent" }}
+                onMouseEnter={(e) => e.currentTarget.style.background = C.paper}
+                onMouseLeave={(e) => e.currentTarget.style.background = o.value === value ? C.mossSoft : "transparent"}>
+                <div style={{ fontWeight: o.value === value ? 600 : 400 }}>{o.label}</div>
+                {o.sub && <div style={{ fontSize: 12, color: C.muted }}>{o.sub}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

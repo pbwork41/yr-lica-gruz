@@ -1,50 +1,114 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { calcOrder, rub, rub2, fmtDate, WORK_TYPES } from "../lib/calc";
-import { C, Field, Box, Row } from "./ui";
+import { C, Field, Box, Row, SearchSelect } from "./ui";
 
-function blankOrder(cps) {
+function blankOrder() {
   return {
     order_date: new Date().toISOString().slice(0, 10), paid_date: "",
-    counterparty_id: cps[0]?.id || "", work_type: "container_40",
-    revenue: 0, payout: 0, hours: "", workers_count: "",
-    payment_method: "cashless", is_paid: false, invoice_number: "",
+    counterparty_id: "", work_type: "container_40",
+    revenue: "", payout: "", hours: "", workers_count: "",
+    payment_method: "cashless", is_paid: false, invoice_number: "", notes: "",
     calc_smz_service: true, calc_smz_tax: true, calc_logist: true, calc_ads: true,
   };
 }
 
+function monthRange() {
+  const n = new Date();
+  const f = (d) => d.toISOString().slice(0, 10);
+  return [f(new Date(n.getFullYear(), n.getMonth(), 1)), f(new Date(n.getFullYear(), n.getMonth() + 1, 0))];
+}
+
 export default function Orders({ rows, cps, onSave, onDelete }) {
   const [draft, setDraft] = useState(null);
+  // фильтры
+  const [fCp, setFCp] = useState("");            // контрагент
+  const [fPaid, setFPaid] = useState("all");      // all | paid | unpaid
+  const [useDate, setUseDate] = useState(false);
+  const mr = monthRange();
+  const [from, setFrom] = useState(mr[0]);
+  const [to, setTo] = useState(mr[1]);
+
+  const markPaid = (r) => {
+    onSave({ ...r, is_paid: true, paid_date: new Date().toISOString().slice(0, 10) });
+  };
+
+  const filtered = useMemo(() => {
+    return rows.filter((r) => {
+      if (fCp && r.counterparty_id !== fCp) return false;
+      if (fPaid === "paid" && !r.is_paid) return false;
+      if (fPaid === "unpaid" && r.is_paid) return false;
+      if (useDate && (r.order_date < from || r.order_date > to)) return false;
+      return true;
+    });
+  }, [rows, fCp, fPaid, useDate, from, to]);
+
+  const filteredUnpaidSum = filtered.filter((r) => !r.is_paid).reduce((s, r) => s + (+r.revenue || 0), 0);
 
   if (draft) {
     return <OrderForm draft={draft} setDraft={setDraft} cps={cps}
       onSave={(o) => { onSave(o); setDraft(null); }} onCancel={() => setDraft(null)} />;
   }
 
+  const cpOptions = cps.map((c) => ({ value: c.id, label: c.name, sub: [c.inn, c.notes].filter(Boolean).join(" · ") }));
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ fontSize: 13.5, color: C.muted }}>{rows.length} заявок</div>
-        <button onClick={() => setDraft(blankOrder(cps))} disabled={!cps.length}
+        <div style={{ fontSize: 13.5, color: C.muted }}>{filtered.length} из {rows.length} заявок</div>
+        <button onClick={() => setDraft(blankOrder())} disabled={!cps.length}
           style={{ background: C.moss, color: "#fff", border: "none", borderRadius: 10, padding: "10px 18px", fontSize: 14, fontWeight: 600, cursor: "pointer", opacity: cps.length ? 1 : 0.5 }}>
           + Добавить заявку
         </button>
       </div>
       {!cps.length && <div style={{ color: C.muted, fontSize: 13 }}>Сначала добавьте контрагента во вкладке «Контрагенты».</div>}
+
+      {/* Фильтры */}
+      <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 13, padding: "14px 16px", display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
+        <div style={{ minWidth: 220 }}>
+          <SearchSelect value={fCp} onChange={setFCp}
+            options={[{ value: "", label: "Все контрагенты" }, ...cpOptions]} placeholder="Все контрагенты" />
+        </div>
+        <div style={{ display: "flex", gap: 4, background: C.paper, padding: 4, borderRadius: 10, border: `1px solid ${C.line}` }}>
+          {[["all", "Все"], ["paid", "Оплаченные"], ["unpaid", "Не оплаченные"]].map(([k, l]) => (
+            <button key={k} onClick={() => setFPaid(k)} style={{
+              border: "none", cursor: "pointer", padding: "7px 13px", borderRadius: 7, fontSize: 13, fontWeight: 600,
+              background: fPaid === k ? C.ink : "transparent", color: fPaid === k ? "#fff" : C.muted,
+            }}>{l}</button>
+          ))}
+        </div>
+        <label className="chk" style={{ borderColor: useDate ? C.moss : C.line }} onClick={() => setUseDate(!useDate)}>
+          <Box on={useDate} /> По дате
+        </label>
+        {useDate && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input className="fld" style={{ width: 145 }} type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+            <span style={{ color: C.muted }}>—</span>
+            <input className="fld" style={{ width: 145 }} type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+          </div>
+        )}
+        {(fPaid === "unpaid" || fCp) && (
+          <div style={{ marginLeft: "auto", fontSize: 13.5, color: C.muted }}>
+            Не оплачено: <span className="num" style={{ color: C.red, fontWeight: 700 }}>{rub(filteredUnpaidSum)}</span>
+          </div>
+        )}
+      </div>
+
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {rows.map((r) => <OrderCard key={r.id} r={r} onEdit={() => setDraft(r)} onDelete={() => onDelete(r.id)} />)}
+        {filtered.map((r) => <OrderCard key={r.id} r={r} onEdit={() => setDraft(r)} onDelete={() => onDelete(r.id)} onMarkPaid={() => markPaid(r)} />)}
+        {filtered.length === 0 && <div style={{ color: C.muted, fontSize: 13, textAlign: "center", padding: 20 }}>Нет заявок по фильтру</div>}
       </div>
     </div>
   );
 }
 
-function OrderCard({ r, onEdit, onDelete }) {
+function OrderCard({ r, onEdit, onDelete, onMarkPaid }) {
   const [open, setOpen] = useState(false);
   const c = r.calc;
   return (
     <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 13, overflow: "hidden" }}>
-      <div onClick={() => setOpen(!open)} style={{ padding: "14px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: 16 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ padding: "14px 18px", display: "flex", alignItems: "center", gap: 16 }}>
+        <div style={{ flex: 1, minWidth: 0, cursor: "pointer" }} onClick={() => setOpen(!open)}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <span style={{ fontWeight: 600 }}>{r.cp?.name || "—"}</span>
             <span style={{ fontSize: 11.5, padding: "2px 8px", borderRadius: 20, background: r.payment_method === "cash" ? "#f3ecdd" : C.mossSoft, color: r.payment_method === "cash" ? C.gold : C.moss, fontWeight: 600 }}>
@@ -54,14 +118,20 @@ function OrderCard({ r, onEdit, onDelete }) {
           </div>
           <div style={{ fontSize: 12.5, color: C.muted, marginTop: 3 }}>
             {fmtDate(r.order_date)} · {WORK_TYPES[r.work_type] || r.work_type}
-            {r.workers_count ? ` · ${r.workers_count} чел.` : ""}{r.hours ? ` · ${r.hours} ч` : ""}{r.invoice_number ? ` · ${r.invoice_number}` : ""}
+            {r.workers_count ? ` · ${r.workers_count} чел.` : ""}{r.hours ? ` · ${r.hours} ч` : ""}{r.invoice_number ? ` · Счёт №${r.invoice_number}` : ""}
           </div>
         </div>
-        <div style={{ textAlign: "right" }}>
+        {!r.is_paid && (
+          <button onClick={onMarkPaid} title="Отметить оплаченной (сегодня)"
+            style={{ border: `1px solid ${C.moss}`, background: C.mossSoft, color: C.moss, borderRadius: 8, padding: "7px 12px", cursor: "pointer", fontSize: 13, fontWeight: 600, whiteSpace: "nowrap" }}>
+            ✓ Оплачено
+          </button>
+        )}
+        <div style={{ textAlign: "right", cursor: "pointer" }} onClick={() => setOpen(!open)}>
           <div className="num" style={{ fontSize: 12.5, color: C.muted }}>{rub(r.revenue)}</div>
           <div className="num" style={{ fontFamily: "Fraunces, serif", fontSize: 18, fontWeight: 600, color: C.moss }}>{rub(c.net)}</div>
         </div>
-        <div style={{ color: C.muted, transform: open ? "rotate(90deg)" : "none", transition: "transform .15s" }}>{"›"}</div>
+        <div onClick={() => setOpen(!open)} style={{ color: C.muted, cursor: "pointer", transform: open ? "rotate(90deg)" : "none", transition: "transform .15s" }}>{"›"}</div>
       </div>
       {open && (
         <div style={{ borderTop: `1px solid ${C.line}`, padding: "16px 18px", background: "#fbfbf8" }}>
@@ -80,6 +150,8 @@ function OrderCard({ r, onEdit, onDelete }) {
             <Row k="Партнёр · 60%" v={rub2(c.owner)} />
             <Row k="Партнёр · 40%" v={rub2(c.partner)} />
           </div>
+          {r.notes && <div style={{ marginTop: 12, fontSize: 13, color: C.muted }}><b style={{ color: C.ink }}>Комментарий:</b> {r.notes}</div>}
+          {r.is_paid && r.paid_date && <div style={{ marginTop: 8, fontSize: 12.5, color: C.moss }}>Оплачено {fmtDate(r.paid_date)}</div>}
           <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
             <button onClick={onEdit} style={{ border: `1px solid ${C.line}`, background: C.card, borderRadius: 8, padding: "7px 14px", cursor: "pointer", fontSize: 13, fontWeight: 600, color: C.ink }}>Редактировать</button>
             <button onClick={onDelete} style={{ border: `1px solid ${C.line}`, background: C.card, borderRadius: 8, padding: "7px 14px", cursor: "pointer", fontSize: 13, fontWeight: 600, color: C.red }}>Удалить</button>
@@ -150,8 +222,12 @@ function OrderForm({ draft, setDraft, cps, onSave, onCancel }) {
   const set = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
   const preview = calcOrder({ ...draft, revenue: +draft.revenue || 0, payout: +draft.payout || 0 });
   const cashless = draft.payment_method === "cashless";
+  const [err, setErr] = useState("");
+
+  const cpOptions = cps.map((c) => ({ value: c.id, label: c.name, sub: [c.inn, c.notes].filter(Boolean).join(" · ") }));
 
   const save = () => {
+    if (!draft.counterparty_id) { setErr("Выберите контрагента"); return; }
     onSave({
       ...draft,
       revenue: +draft.revenue || 0, payout: +draft.payout || 0,
@@ -166,13 +242,13 @@ function OrderForm({ draft, setDraft, cps, onSave, onCancel }) {
       <div style={{ fontFamily: "Fraunces, serif", fontSize: 18, fontWeight: 600, marginBottom: 18 }}>
         {draft.id ? "Редактировать заявку" : "Новая заявка"}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 22 }}>
+        {/* ЛЕВАЯ КОЛОНКА — все поля ввода */}
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <Field label="Дата"><input className="fld" type="date" value={draft.order_date} onChange={(e) => set("order_date", e.target.value)} /></Field>
-          <Field label="Контрагент">
-            <select className="fld" value={draft.counterparty_id} onChange={(e) => set("counterparty_id", e.target.value)}>
-              {cps.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+          <Field label="Контрагент *">
+            <SearchSelect value={draft.counterparty_id} onChange={(v) => { set("counterparty_id", v); setErr(""); }}
+              options={cpOptions} placeholder="Выберите контрагента" />
           </Field>
           <Field label="Вид работ">
             <select className="fld" value={draft.work_type} onChange={(e) => set("work_type", e.target.value)}>
@@ -180,17 +256,15 @@ function OrderForm({ draft, setDraft, cps, onSave, onCancel }) {
             </select>
           </Field>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <Field label="Выручка от клиента, ₽"><input className="fld" type="number" value={draft.revenue} onChange={(e) => set("revenue", e.target.value)} /></Field>
-            <Field label="Выплата исполнителям, ₽"><input className="fld" type="number" value={draft.payout} onChange={(e) => set("payout", e.target.value)} /></Field>
+            <Field label="Выручка от клиента, ₽"><input className="fld" type="number" placeholder="0" value={draft.revenue} onChange={(e) => set("revenue", e.target.value)} /></Field>
+            <Field label="Выплата исполнителям, ₽"><input className="fld" type="number" placeholder="0" value={draft.payout} onChange={(e) => set("payout", e.target.value)} /></Field>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <Field label="Часов"><input className="fld" type="number" value={draft.hours} onChange={(e) => set("hours", e.target.value)} /></Field>
             <Field label="Человек"><input className="fld" type="number" value={draft.workers_count} onChange={(e) => set("workers_count", e.target.value)} /></Field>
           </div>
-          <Field label="Номер счёта"><input className="fld" placeholder="напр. СЧ-0015" value={draft.invoice_number || ""} onChange={(e) => set("invoice_number", e.target.value)} /></Field>
-        </div>
+          <Field label="Номер счёта"><input className="fld" placeholder="напр. 174" value={draft.invoice_number || ""} onChange={(e) => set("invoice_number", e.target.value)} /></Field>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <Field label="Форма расчёта">
             <div style={{ display: "flex", gap: 8 }}>
               {[["cashless", "Безнал"], ["cash", "Наличные"]].map(([k, l]) => (
@@ -211,6 +285,14 @@ function OrderForm({ draft, setDraft, cps, onSave, onCancel }) {
             </div>
             {!cashless && <div style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>При наличных налоги и комиссии СЗ не начисляются.</div>}
           </Field>
+
+          <Field label="Комментарий к заявке">
+            <textarea className="fld" rows={2} value={draft.notes || ""} onChange={(e) => set("notes", e.target.value)} placeholder="детали объекта, особые условия…" style={{ resize: "vertical" }} />
+          </Field>
+        </div>
+
+        {/* ПРАВАЯ КОЛОНКА — оплата + живой расчёт */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <label className="chk" style={{ borderColor: draft.is_paid ? C.moss : C.line }} onClick={() => set("is_paid", !draft.is_paid)}>
             <Box on={draft.is_paid} /> Оплачено клиентом
           </label>
@@ -225,6 +307,7 @@ function OrderForm({ draft, setDraft, cps, onSave, onCancel }) {
           </div>
         </div>
       </div>
+      {err && <div style={{ color: C.red, fontSize: 13, marginTop: 12 }}>{err}</div>}
       <div style={{ display: "flex", gap: 10, marginTop: 20, justifyContent: "flex-end" }}>
         <button onClick={onCancel} style={{ padding: "10px 18px", borderRadius: 10, border: `1px solid ${C.line}`, background: C.card, cursor: "pointer", fontWeight: 600, fontSize: 14 }}>Отмена</button>
         <button onClick={save} style={{ padding: "10px 22px", borderRadius: 10, border: "none", background: C.moss, color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: 14 }}>Сохранить</button>

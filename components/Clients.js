@@ -1,7 +1,7 @@
 "use client";
 import React, { useState } from "react";
 import { rub, fmtDate, daysAgo } from "../lib/calc";
-import { C, Field, SectionTitle, th, thR, td, tdR } from "./ui";
+import { C, Field, SectionTitle, Box, th, thR, td, tdR } from "./ui";
 
 const TODAY = new Date();
 function daysAgoColor(dateStr) {
@@ -9,13 +9,16 @@ function daysAgoColor(dateStr) {
   return d > 30 ? C.red : C.muted;
 }
 function blankCp() {
-  return { name: "", inn: "", kpp: "", legal_address: "", bank_name: "", bank_account: "", bank_bik: "", contact_person: "", contact_phone: "", contact_email: "", rate_hourly: "", payout_hourly: "", rate_container_20: "", rate_container_40: "", payout_container_20: "", payout_container_40: "", vat_included: true, is_active: true };
+  return { name: "", inn: "", kpp: "", legal_address: "", bank_name: "", bank_account: "", bank_bik: "", contact_person: "", contact_phone: "", contact_email: "", rate_hourly: "", payout_hourly: "", rate_container_20: "", rate_container_40: "", payout_container_20: "", payout_container_40: "", vat_mode: "included", notes: "", is_active: true };
 }
 
-export default function Clients({ byCp, cps, onSave }) {
+const VAT_MODES = [["included", "В т.ч. НДС 5%"], ["added", "НДС 5% сверху"], ["none", "Без НДС"]];
+
+export default function Clients({ byCp, cps, onSave, services, cpServices, onAddService, onDeleteService }) {
   const [editing, setEditing] = useState(null);
 
-  if (editing) return <CpForm cp={editing} onSave={(c) => { onSave(c); setEditing(null); }} onCancel={() => setEditing(null)} />;
+  if (editing) return <CpForm cp={editing} onSave={onSave} onCancel={() => setEditing(null)}
+    services={services} cpServices={cpServices} onAddService={onAddService} onDeleteService={onDeleteService} />;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -24,12 +27,12 @@ export default function Clients({ byCp, cps, onSave }) {
         <button onClick={() => setEditing(blankCp())} style={{ background: C.moss, color: "#fff", border: "none", borderRadius: 10, padding: "10px 18px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>+ Добавить контрагента</button>
       </div>
       <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 13, overflow: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5, minWidth: 820 }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5, minWidth: 900 }}>
           <thead>
             <tr style={{ background: C.paper, textAlign: "left", color: C.muted, fontSize: 12.5 }}>
-              <th style={th}>Контрагент</th><th style={th}>ИНН</th><th style={thR}>Заказов</th>
-              <th style={thR}>Оборот</th><th style={thR}>Ср. чек</th><th style={thR}>Чистая</th>
-              <th style={thR}>Маржа</th><th style={thR}>Долги</th><th style={th}>Последний заказ</th><th style={thR}></th>
+              <th style={th}>Контрагент</th><th style={th}>ИНН</th><th style={th}>Комментарий</th><th style={thR}>Заказов</th>
+              <th style={thR}>Оборот</th><th style={thR}>Чистая</th>
+              <th style={thR}>Долги</th><th style={th}>Последний заказ</th><th style={thR}></th>
             </tr>
           </thead>
           <tbody>
@@ -37,11 +40,10 @@ export default function Clients({ byCp, cps, onSave }) {
               <tr key={c.id} style={{ borderTop: `1px solid ${C.line}` }}>
                 <td style={{ ...td, fontWeight: 600 }}>{c.name}</td>
                 <td style={{ ...td, color: C.muted }} className="num">{c.inn || "—"}</td>
+                <td style={{ ...td, color: C.muted, fontSize: 12.5, maxWidth: 200 }}>{c.notes || "—"}</td>
                 <td style={tdR} className="num">{c.count}</td>
                 <td style={tdR} className="num">{rub(c.revenue)}</td>
-                <td style={tdR} className="num">{rub(c.avg)}</td>
                 <td style={{ ...tdR, color: C.moss, fontWeight: 600 }} className="num">{rub(c.net)}</td>
-                <td style={tdR} className="num">{c.margin.toFixed(1)}%</td>
                 <td style={{ ...tdR, color: c.unpaid ? C.red : C.muted }} className="num">{c.unpaid || "—"}</td>
                 <td style={{ ...td, color: C.muted, fontSize: 12.5 }}>
                   {c.lastDate ? <>{fmtDate(c.lastDate)} <span style={{ color: daysAgoColor(c.lastDate) }}>· {daysAgo(c.lastDate, TODAY)}</span></> : "—"}
@@ -51,7 +53,7 @@ export default function Clients({ byCp, cps, onSave }) {
                 </td>
               </tr>
             ))}
-            {!byCp.length && <tr><td colSpan={10} style={{ ...td, textAlign: "center", color: C.muted }}>Нет контрагентов</td></tr>}
+            {!byCp.length && <tr><td colSpan={9} style={{ ...td, textAlign: "center", color: C.muted }}>Нет контрагентов</td></tr>}
           </tbody>
         </table>
       </div>
@@ -59,19 +61,34 @@ export default function Clients({ byCp, cps, onSave }) {
   );
 }
 
-function CpForm({ cp, onSave, onCancel }) {
+function CpForm({ cp, onSave, onCancel, services, cpServices, onAddService, onDeleteService }) {
   const [f, setF] = useState(cp);
   const set = (k, v) => setF((d) => ({ ...d, [k]: v }));
   const numify = (v) => (v === "" || v == null ? null : +v);
 
+  // ставки услуг для этого контрагента
+  const initRates = {};
+  (services || []).forEach((s) => {
+    const ex = (cpServices || []).find((x) => x.counterparty_id === cp.id && x.service_id === s.id);
+    initRates[s.id] = { rate_client: ex?.rate_client ?? "", payout_worker: ex?.payout_worker ?? "" };
+  });
+  const [svcRates, setSvcRates] = useState(initRates);
+  const setRate = (sid, field, val) => setSvcRates((r) => ({ ...r, [sid]: { ...r[sid], [field]: val } }));
+  const [newSvc, setNewSvc] = useState("");
+
   const save = () => {
     if (!f.name) return;
-    onSave({
+    const cpData = {
       ...f,
       rate_hourly: numify(f.rate_hourly), payout_hourly: numify(f.payout_hourly),
       rate_container_20: numify(f.rate_container_20), rate_container_40: numify(f.rate_container_40),
       payout_container_20: numify(f.payout_container_20), payout_container_40: numify(f.payout_container_40),
-    });
+      vat_included: f.vat_mode === "included", // для обратной совместимости
+    };
+    const rates = Object.entries(svcRates).map(([service_id, v]) => ({
+      service_id, rate_client: numify(v.rate_client), payout_worker: numify(v.payout_worker),
+    }));
+    onSave(cpData, rates);
   };
 
   return (
@@ -88,6 +105,9 @@ function CpForm({ cp, onSave, onCancel }) {
             <Field label="КПП"><input className="fld" value={f.kpp || ""} onChange={(e) => set("kpp", e.target.value)} /></Field>
           </div>
           <Field label="Юридический адрес"><input className="fld" value={f.legal_address || ""} onChange={(e) => set("legal_address", e.target.value)} /></Field>
+          <Field label="Комментарий">
+            <textarea className="fld" rows={2} value={f.notes || ""} onChange={(e) => set("notes", e.target.value)} placeholder="напр. Fix Price, ООО «Бэст Прайс» — первое юрлицо" style={{ resize: "vertical" }} />
+          </Field>
 
           <SectionTitle>Банковские реквизиты</SectionTitle>
           <Field label="Банк"><input className="fld" value={f.bank_name || ""} onChange={(e) => set("bank_name", e.target.value)} /></Field>
@@ -117,13 +137,33 @@ function CpForm({ cp, onSave, onCancel }) {
             <Field label="Контейнер 40 фут, ₽"><input className="fld" type="number" value={f.payout_container_40 ?? ""} onChange={(e) => set("payout_container_40", e.target.value)} /></Field>
           </div>
 
+          <SectionTitle>Другие услуги</SectionTitle>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {(services || []).map((s) => (
+              <div key={s.id} style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr auto", gap: 8, alignItems: "center" }}>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>{s.name}</div>
+                <input className="fld" type="number" placeholder="клиенту ₽" value={svcRates[s.id]?.rate_client ?? ""} onChange={(e) => setRate(s.id, "rate_client", e.target.value)} />
+                <input className="fld" type="number" placeholder="исполн. ₽" value={svcRates[s.id]?.payout_worker ?? ""} onChange={(e) => setRate(s.id, "payout_worker", e.target.value)} />
+                <button onClick={() => { if (confirm(`Удалить услугу «${s.name}» из справочника?`)) onDeleteService(s.id); }}
+                  title="Удалить услугу из справочника" style={{ border: "none", background: "transparent", color: C.muted, cursor: "pointer", fontSize: 16 }}>×</button>
+              </div>
+            ))}
+            {(!services || !services.length) && <div style={{ fontSize: 12.5, color: C.muted }}>Услуг пока нет. Добавьте ниже (напр. Самосвал, Грузовик).</div>}
+            <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+              <input className="fld" placeholder="Новая услуга (напр. Самосвал)" value={newSvc} onChange={(e) => setNewSvc(e.target.value)} />
+              <button onClick={() => { if (newSvc.trim()) { onAddService(newSvc.trim()); setNewSvc(""); } }}
+                style={{ border: `1px solid ${C.moss}`, background: C.mossSoft, color: C.moss, borderRadius: 9, padding: "0 16px", cursor: "pointer", fontWeight: 600, fontSize: 13, whiteSpace: "nowrap" }}>+ Услуга</button>
+            </div>
+            <div style={{ fontSize: 11.5, color: C.muted }}>Услуга общая для всех, а ставки — свои у каждого контрагента.</div>
+          </div>
+
           <SectionTitle>НДС</SectionTitle>
           <div style={{ display: "flex", gap: 8 }}>
-            {[[true, "В т.ч. НДС 5%"], [false, "НДС 5% сверху"]].map(([v, l]) => (
-              <button key={String(v)} onClick={() => set("vat_included", v)} style={{
-                flex: 1, padding: "9px", borderRadius: 9, cursor: "pointer", fontWeight: 600, fontSize: 13,
-                border: `1px solid ${f.vat_included === v ? C.moss : C.line}`,
-                background: f.vat_included === v ? C.mossSoft : C.card, color: f.vat_included === v ? C.moss : C.muted,
+            {VAT_MODES.map(([v, l]) => (
+              <button key={v} onClick={() => set("vat_mode", v)} style={{
+                flex: 1, padding: "9px", borderRadius: 9, cursor: "pointer", fontWeight: 600, fontSize: 12.5,
+                border: `1px solid ${f.vat_mode === v ? C.moss : C.line}`,
+                background: f.vat_mode === v ? C.mossSoft : C.card, color: f.vat_mode === v ? C.moss : C.muted,
               }}>{l}</button>
             ))}
           </div>
