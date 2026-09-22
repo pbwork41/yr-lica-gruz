@@ -2,6 +2,30 @@
 import React, { useState, useMemo } from "react";
 import { calcOrder, rub, rub2, fmtDate, WORK_TYPES } from "../lib/calc";
 import { C, Field, Box, Row, SearchSelect } from "./ui";
+import { supabase } from "../lib/supabase";
+
+async function openDocument(orderId, type, withSign) {
+  try {
+    const { data } = await supabase.auth.getSession();
+    const token = data?.session?.access_token;
+    const res = await fetch("/api/document", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ order_id: orderId, type, withSign, token }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert("Ошибка формирования документа: " + (err.error || res.status));
+      return;
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank");
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (e) {
+    alert("Ошибка: " + e.message);
+  }
+}
 
 function blankOrder() {
   return {
@@ -102,6 +126,35 @@ export default function Orders({ rows, cps, onSave, onDelete }) {
   );
 }
 
+function DocButtons({ r }) {
+  const [withSign, setWithSign] = useState(true);
+  const [busy, setBusy] = useState("");
+  const make = async (type) => {
+    setBusy(type);
+    await openDocument(r.id, type, withSign);
+    setBusy("");
+  };
+  const btn = (type, label) => (
+    <button onClick={() => make(type)} disabled={!!busy}
+      style={{ border: `1px solid ${C.moss}`, background: C.mossSoft, color: C.moss, borderRadius: 8, padding: "7px 14px", cursor: busy ? "wait" : "pointer", fontSize: 13, fontWeight: 600, opacity: busy && busy !== type ? 0.5 : 1 }}>
+      {busy === type ? "…" : label}
+    </button>
+  );
+  return (
+    <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px dashed ${C.line}` }}>
+      <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 8, fontWeight: 600 }}>Документы {r.invoice_number ? `· № ${r.invoice_number}` : "· номер присвоится при формировании"}</div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        {btn("invoice", "Счёт")}
+        {btn("act", "Акт")}
+        {btn("upd", "УПД")}
+        <label className="chk" style={{ borderColor: withSign ? C.moss : C.line, marginLeft: 4 }} onClick={() => setWithSign(!withSign)}>
+          <Box on={withSign} /> с подписью
+        </label>
+      </div>
+    </div>
+  );
+}
+
 function OrderCard({ r, onEdit, onDelete, onMarkPaid }) {
   const [open, setOpen] = useState(false);
   const c = r.calc;
@@ -152,6 +205,10 @@ function OrderCard({ r, onEdit, onDelete, onMarkPaid }) {
           </div>
           {r.notes && <div style={{ marginTop: 12, fontSize: 13, color: C.muted }}><b style={{ color: C.ink }}>Комментарий:</b> {r.notes}</div>}
           {r.is_paid && r.paid_date && <div style={{ marginTop: 8, fontSize: 12.5, color: C.moss }}>Оплачено {fmtDate(r.paid_date)}</div>}
+
+          {/* Документы */}
+          <DocButtons r={r} />
+
           <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
             <button onClick={onEdit} style={{ border: `1px solid ${C.line}`, background: C.card, borderRadius: 8, padding: "7px 14px", cursor: "pointer", fontSize: 13, fontWeight: 600, color: C.ink }}>Редактировать</button>
             <button onClick={onDelete} style={{ border: `1px solid ${C.line}`, background: C.card, borderRadius: 8, padding: "7px 14px", cursor: "pointer", fontSize: 13, fontWeight: 600, color: C.red }}>Удалить</button>

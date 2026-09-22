@@ -9,7 +9,7 @@ function daysAgoColor(dateStr) {
   return d > 30 ? C.red : C.muted;
 }
 function blankCp() {
-  return { name: "", inn: "", kpp: "", legal_address: "", bank_name: "", bank_account: "", bank_bik: "", contact_person: "", contact_phone: "", contact_email: "", rate_hourly: "", payout_hourly: "", rate_container_20: "", rate_container_40: "", payout_container_20: "", payout_container_40: "", vat_mode: "included", notes: "", is_active: true };
+  return { name: "", inn: "", kpp: "", legal_address: "", contract_basis: "", bank_name: "", bank_account: "", bank_bik: "", contact_person: "", contact_phone: "", contact_email: "", rate_hourly: "", payout_hourly: "", rate_container_20: "", rate_container_40: "", payout_container_20: "", payout_container_40: "", vat_mode: "included", notes: "", is_active: true };
 }
 
 const VAT_MODES = [["included", "В т.ч. НДС 5%"], ["added", "НДС 5% сверху"], ["none", "Без НДС"]];
@@ -105,6 +105,7 @@ function CpForm({ cp, onSave, onCancel, services, cpServices, onAddService, onDe
             <Field label="КПП"><input className="fld" value={f.kpp || ""} onChange={(e) => set("kpp", e.target.value)} /></Field>
           </div>
           <Field label="Юридический адрес"><input className="fld" value={f.legal_address || ""} onChange={(e) => set("legal_address", e.target.value)} /></Field>
+          <Field label="Основание (для актов/УПД)"><input className="fld" value={f.contract_basis || ""} onChange={(e) => set("contract_basis", e.target.value)} placeholder="напр. Договор от 01.01.2026" /></Field>
           <Field label="Комментарий">
             <textarea className="fld" rows={2} value={f.notes || ""} onChange={(e) => set("notes", e.target.value)} placeholder="напр. Fix Price, ООО «Бэст Прайс» — первое юрлицо" style={{ resize: "vertical" }} />
           </Field>
