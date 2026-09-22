@@ -130,28 +130,28 @@ export default function Workspace({ session }) {
   return (
     <div style={{ minHeight: "100vh", background: C.paper }}>
       <div style={{ borderBottom: `1px solid ${C.line}`, background: C.card }}>
-        <div style={{ maxWidth: 1120, margin: "0 auto", padding: "16px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-          <div style={{ fontFamily: "Fraunces, serif", fontSize: 22, fontWeight: 600, letterSpacing: "-0.02em" }}>
+        <div style={{ maxWidth: 1120, margin: "0 auto", padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <div className="app-title" style={{ fontFamily: "Fraunces, serif", fontSize: 22, fontWeight: 600, letterSpacing: "-0.02em", whiteSpace: "nowrap" }}>
             Юрлица · Грузоперевозки
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div className="tabs-scroll" style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <div style={{ display: "flex", gap: 4, background: C.paper, padding: 4, borderRadius: 11, border: `1px solid ${C.line}` }}>
               {tabs.map(([k, label]) => (
                 <button key={k} onClick={() => setTab(k)} style={{
-                  border: "none", cursor: "pointer", padding: "8px 16px", borderRadius: 8, fontSize: 14, fontWeight: 600,
+                  border: "none", cursor: "pointer", padding: "8px 14px", borderRadius: 8, fontSize: 14, fontWeight: 600, whiteSpace: "nowrap",
                   background: tab === k ? C.ink : "transparent", color: tab === k ? "#fff" : C.muted,
                 }}>{label}</button>
               ))}
             </div>
             <button onClick={() => supabase.auth.signOut()} title="Выйти"
-              style={{ border: `1px solid ${C.line}`, background: C.card, borderRadius: 9, padding: "8px 12px", cursor: "pointer", color: C.muted, fontSize: 13, fontWeight: 600 }}>
+              style={{ border: `1px solid ${C.line}`, background: C.card, borderRadius: 9, padding: "8px 12px", cursor: "pointer", color: C.muted, fontSize: 13, fontWeight: 600, whiteSpace: "nowrap" }}>
               Выход
             </button>
           </div>
         </div>
       </div>
 
-      <div style={{ maxWidth: 1120, margin: "0 auto", padding: "24px" }}>
+      <div className="container">
         {error && <div style={{ background: "#f7e7e3", color: C.red, padding: "12px 16px", borderRadius: 10, marginBottom: 16 }}>{error}</div>}
         {loading ? (
           <div style={{ color: C.muted, padding: 40, textAlign: "center" }}>Загрузка данных…</div>

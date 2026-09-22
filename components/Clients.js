@@ -96,11 +96,11 @@ function CpForm({ cp, onSave, onCancel, services, cpServices, onAddService, onDe
       <div style={{ fontFamily: "Fraunces, serif", fontSize: 18, fontWeight: 600, marginBottom: 18 }}>
         {cp.id ? "Редактировать контрагента" : "Новый контрагент"}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 22 }}>
+      <div className="grid-2">
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <SectionTitle>Основное</SectionTitle>
           <Field label="Название *"><input className="fld" value={f.name} onChange={(e) => set("name", e.target.value)} placeholder="напр. КДВ Групп" /></Field>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div className="grid-half">
             <Field label="ИНН"><input className="fld" value={f.inn || ""} onChange={(e) => set("inn", e.target.value)} /></Field>
             <Field label="КПП"><input className="fld" value={f.kpp || ""} onChange={(e) => set("kpp", e.target.value)} /></Field>
           </div>
@@ -116,7 +116,7 @@ function CpForm({ cp, onSave, onCancel, services, cpServices, onAddService, onDe
 
           <SectionTitle>Контакты</SectionTitle>
           <Field label="Контактное лицо"><input className="fld" value={f.contact_person || ""} onChange={(e) => set("contact_person", e.target.value)} /></Field>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div className="grid-half">
             <Field label="Телефон"><input className="fld" value={f.contact_phone || ""} onChange={(e) => set("contact_phone", e.target.value)} /></Field>
             <Field label="Email"><input className="fld" value={f.contact_email || ""} onChange={(e) => set("contact_email", e.target.value)} /></Field>
           </div>
@@ -125,14 +125,14 @@ function CpForm({ cp, onSave, onCancel, services, cpServices, onAddService, onDe
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <SectionTitle>Ставки клиенту</SectionTitle>
           <Field label="За час, ₽"><input className="fld" type="number" value={f.rate_hourly ?? ""} onChange={(e) => set("rate_hourly", e.target.value)} /></Field>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div className="grid-half">
             <Field label="Контейнер 20 фут, ₽"><input className="fld" type="number" value={f.rate_container_20 ?? ""} onChange={(e) => set("rate_container_20", e.target.value)} /></Field>
             <Field label="Контейнер 40 фут, ₽"><input className="fld" type="number" value={f.rate_container_40 ?? ""} onChange={(e) => set("rate_container_40", e.target.value)} /></Field>
           </div>
 
           <SectionTitle>Выплата исполнителю</SectionTitle>
           <Field label="За час, ₽"><input className="fld" type="number" value={f.payout_hourly ?? ""} onChange={(e) => set("payout_hourly", e.target.value)} /></Field>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div className="grid-half">
             <Field label="Контейнер 20 фут, ₽"><input className="fld" type="number" value={f.payout_container_20 ?? ""} onChange={(e) => set("payout_container_20", e.target.value)} /></Field>
             <Field label="Контейнер 40 фут, ₽"><input className="fld" type="number" value={f.payout_container_40 ?? ""} onChange={(e) => set("payout_container_40", e.target.value)} /></Field>
           </div>
@@ -140,7 +140,7 @@ function CpForm({ cp, onSave, onCancel, services, cpServices, onAddService, onDe
           <SectionTitle>Другие услуги</SectionTitle>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {(services || []).map((s) => (
-              <div key={s.id} style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr auto", gap: 8, alignItems: "center" }}>
+              <div key={s.id} className="svc-row">
                 <div style={{ fontSize: 13, fontWeight: 500 }}>{s.name}</div>
                 <input className="fld" type="number" placeholder="клиенту ₽" value={svcRates[s.id]?.rate_client ?? ""} onChange={(e) => setRate(s.id, "rate_client", e.target.value)} />
                 <input className="fld" type="number" placeholder="исполн. ₽" value={svcRates[s.id]?.payout_worker ?? ""} onChange={(e) => setRate(s.id, "payout_worker", e.target.value)} />

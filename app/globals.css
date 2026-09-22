@@ -1,14 +1,41 @@
 * { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; }
+html, body { margin: 0; padding: 0; max-width: 100%; overflow-x: hidden; }
 body {
   background: #f7f6f1;
   color: #12211c;
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
 }
 .num { font-variant-numeric: tabular-nums; }
-input, select, button { font: inherit; color: inherit; }
+input, select, button, textarea { font: inherit; color: inherit; }
 .fld { width: 100%; padding: 9px 11px; border: 1px solid #e3e1d8; border-radius: 9px; background: #fff; }
 .fld:focus { outline: 2px solid #2f6f4e; outline-offset: -1px; }
 .chk { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border: 1px solid #e3e1d8; border-radius: 9px; cursor: pointer; font-size: 13px; user-select: none; background: #fff; }
 .chk.on { border-color: #2f6f4e; background: #eaf2ec; color: #2f6f4e; font-weight: 600; }
 table tr:hover td { background: #fbfbf8; }
+
+/* Адаптивные сетки */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+.grid-2-16 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid-dash { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; }
+.grid-half { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.container { max-width: 1120px; margin: 0 auto; padding: 24px; }
+.expense-form { display: grid; grid-template-columns: auto 1fr 2fr 1fr auto; gap: 12px; align-items: end; }
+.svc-row { display: grid; grid-template-columns: 1.2fr 1fr 1fr auto; gap: 8px; align-items: center; }
+
+/* МОБИЛЬНЫЕ ПРАВИЛА */
+@media (max-width: 760px) {
+  .container { padding: 14px; }
+  .grid-2, .grid-2-16, .grid-dash { grid-template-columns: 1fr; gap: 14px; }
+  .grid-half { grid-template-columns: 1fr; }
+  .app-title { font-size: 18px !important; }
+  .tabs-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
+  .tabs-scroll::-webkit-scrollbar { display: none; }
+  .big-num { font-size: 20px !important; }
+  .expense-form { grid-template-columns: 1fr; }
+  .svc-row { grid-template-columns: 1fr 1fr; }
+  .svc-row > div:first-child { grid-column: 1 / -1; font-weight: 600; }
+}
+@media (max-width: 400px) {
+  .stat-grid { grid-template-columns: 1fr !important; }
+}

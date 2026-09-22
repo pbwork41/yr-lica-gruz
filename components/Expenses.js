@@ -47,7 +47,7 @@ export default function Expenses({ expenses, onAdd, onDelete }) {
       </div>
 
       {adding && (
-        <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 13, padding: 18, display: "grid", gridTemplateColumns: "auto 1fr 2fr 1fr auto", gap: 12, alignItems: "end" }}>
+        <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 13, padding: 18 }} className="expense-form">
           <Field label="Дата"><input className="fld" type="date" value={f.expense_date} onChange={(e) => setF({ ...f, expense_date: e.target.value })} /></Field>
           <Field label="Категория">
             <select className="fld" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })}>
@@ -61,7 +61,7 @@ export default function Expenses({ expenses, onAdd, onDelete }) {
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 14 }}>
+      <div className="stat-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 14 }}>
         <Stat label="Всего расходов за период" value={rub(total)} />
         <Stat label="Из прибыли (общие)" value={rub(generalTotal)} sub="ЗП, связь, аренда…" accent={C.clay} />
         <Stat label="Из рекламного фонда" value={rub(adsTotal)} sub="реклама" accent={C.gold} />

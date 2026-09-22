@@ -226,6 +226,35 @@ function OrderForm({ draft, setDraft, cps, onSave, onCancel }) {
 
   const cpOptions = cps.map((c) => ({ value: c.id, label: c.name, sub: [c.inn, c.notes].filter(Boolean).join(" · ") }));
 
+  // Автоподстановка выручки/выплаты из ставок контрагента.
+  // Контейнеры 20/40 — фиксированная ставка. Почасовые/склад — ставка_час × часы × человек.
+  const computeAuto = (cpId, wt, hours, workers) => {
+    const cp = cps.find((c) => c.id === cpId);
+    if (!cp) return null;
+    const h = +hours || 0, w = +workers || 0;
+    let revenue = null, payout = null;
+    if (wt === "container_20") { revenue = cp.rate_container_20; payout = cp.payout_container_20; }
+    else if (wt === "container_40") { revenue = cp.rate_container_40; payout = cp.payout_container_40; }
+    else if (wt === "hourly" || wt === "warehouse") {
+      if (cp.rate_hourly != null && h && w) revenue = cp.rate_hourly * h * w;
+      if (cp.payout_hourly != null && h && w) payout = cp.payout_hourly * h * w;
+    }
+    return { revenue, payout };
+  };
+
+  // Применить автоподстановку, обновив источник (контрагент/вид/часы/люди)
+  const applyAuto = (patch) => {
+    setDraft((d) => {
+      const next = { ...d, ...patch };
+      const auto = computeAuto(next.counterparty_id, next.work_type, next.hours, next.workers_count);
+      if (auto) {
+        if (auto.revenue != null) next.revenue = auto.revenue;
+        if (auto.payout != null) next.payout = auto.payout;
+      }
+      return next;
+    });
+  };
+
   const save = () => {
     if (!draft.counterparty_id) { setErr("Выберите контрагента"); return; }
     onSave({
@@ -242,26 +271,27 @@ function OrderForm({ draft, setDraft, cps, onSave, onCancel }) {
       <div style={{ fontFamily: "Fraunces, serif", fontSize: 18, fontWeight: 600, marginBottom: 18 }}>
         {draft.id ? "Редактировать заявку" : "Новая заявка"}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 22 }}>
+      <div className="grid-2">
         {/* ЛЕВАЯ КОЛОНКА — все поля ввода */}
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <Field label="Дата"><input className="fld" type="date" value={draft.order_date} onChange={(e) => set("order_date", e.target.value)} /></Field>
           <Field label="Контрагент *">
-            <SearchSelect value={draft.counterparty_id} onChange={(v) => { set("counterparty_id", v); setErr(""); }}
+            <SearchSelect value={draft.counterparty_id} onChange={(v) => { applyAuto({ counterparty_id: v }); setErr(""); }}
               options={cpOptions} placeholder="Выберите контрагента" />
           </Field>
           <Field label="Вид работ">
-            <select className="fld" value={draft.work_type} onChange={(e) => set("work_type", e.target.value)}>
+            <select className="fld" value={draft.work_type} onChange={(e) => applyAuto({ work_type: e.target.value })}>
               {Object.entries(WORK_TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select>
           </Field>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div className="grid-half">
             <Field label="Выручка от клиента, ₽"><input className="fld" type="number" placeholder="0" value={draft.revenue} onChange={(e) => set("revenue", e.target.value)} /></Field>
             <Field label="Выплата исполнителям, ₽"><input className="fld" type="number" placeholder="0" value={draft.payout} onChange={(e) => set("payout", e.target.value)} /></Field>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <Field label="Часов"><input className="fld" type="number" value={draft.hours} onChange={(e) => set("hours", e.target.value)} /></Field>
-            <Field label="Человек"><input className="fld" type="number" value={draft.workers_count} onChange={(e) => set("workers_count", e.target.value)} /></Field>
+          <div style={{ fontSize: 11.5, color: C.muted, marginTop: -6 }}>Суммы подставляются из ставок контрагента. Можно исправить вручную.</div>
+          <div className="grid-half">
+            <Field label="Часов"><input className="fld" type="number" value={draft.hours} onChange={(e) => applyAuto({ hours: e.target.value })} /></Field>
+            <Field label="Человек"><input className="fld" type="number" value={draft.workers_count} onChange={(e) => applyAuto({ workers_count: e.target.value })} /></Field>
           </div>
           <Field label="Номер счёта"><input className="fld" placeholder="напр. 174" value={draft.invoice_number || ""} onChange={(e) => set("invoice_number", e.target.value)} /></Field>
 

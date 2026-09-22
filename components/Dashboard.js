@@ -42,14 +42,25 @@ export default function Dashboard({ rows, byCp, expenses }) {
     ads: sum(paid, (r) => r.calc.ads),
     net: sum(paid, (r) => r.calc.net),
   };
-  const distributable = P.net - generalExp;
-  P.owner = distributable * 0.6;
-  P.partner = distributable * 0.4;
-
+  // Рекламный фонд (накопительно за всё время)
   const adsAccruedTotal = sum(rows.filter((r) => r.is_paid), (r) => r.calc.ads);
   const adsSpentTotal = expenses.filter((e) => e.category === "ads").reduce((s, e) => s + (+e.amount || 0), 0);
   const adsFundBalance = adsAccruedTotal - adsSpentTotal;
+
+  // П.2: перерасход фонда рекламы ложится на чистую прибыль.
+  // Если фонд ушёл в минус — модуль минуса вычитается из прибыли к распределению.
+  const adsOverspend = adsFundBalance < 0 ? -adsFundBalance : 0;
+
+  const distributable = P.net - generalExp - adsOverspend;
+  P.owner = distributable * 0.6;
+  P.partner = distributable * 0.4;
+
   const debtSum = sum(debt, (r) => +r.revenue || 0);
+
+  // П.1: общая сумма выполненных заказов за период (по дате заявки)
+  const doneInPeriod = rows.filter((r) => r.order_date >= from && r.order_date <= to);
+  const doneCount = doneInPeriod.length;
+  const doneSum = sum(doneInPeriod, (r) => +r.revenue || 0);
 
   const quick = (label, range) => (
     <button onClick={() => { setFrom(range[0]); setTo(range[1]); }}
@@ -74,7 +85,7 @@ export default function Dashboard({ rows, byCp, expenses }) {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 16 }}>
+      <div className="grid-dash">
         <div style={{ background: C.card, border: `1.5px solid ${C.moss}`, borderRadius: 14, overflow: "hidden" }}>
           <div style={{ background: C.mossSoft, padding: "13px 20px", borderBottom: `1px solid ${C.moss}22` }}>
             <div style={{ fontFamily: "Fraunces, serif", fontSize: 17, fontWeight: 600, color: C.moss }}>К распределению</div>
@@ -98,25 +109,31 @@ export default function Dashboard({ rows, byCp, expenses }) {
               <span className="num" style={{ fontWeight: 600 }}>{rub2(P.net)}</span>
             </div>
             <Row k="Общие расходы (ЗП, связь, аренда…)" v={"− " + rub2(generalExp)} c={C.clay} />
+            {adsOverspend > 0 && <Row k="Перерасход рекламы (сверх фонда)" v={"− " + rub2(adsOverspend)} c={C.red} />}
             <div style={{ borderTop: `1px solid ${C.line}`, margin: "8px 0" }} />
             <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0" }}>
               <span style={{ fontWeight: 700, fontSize: 15, color: C.moss }}>Прибыль</span>
               <span className="num" style={{ fontWeight: 700, fontSize: 17, color: C.moss }}>{rub2(distributable)}</span>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
+            <div className="grid-half" style={{ marginTop: 12 }}>
               <div style={{ background: C.paper, borderRadius: 10, padding: "12px 14px" }}>
                 <div style={{ fontSize: 12, color: C.muted }}>Партнёр · 60%</div>
-                <div className="num" style={{ fontFamily: "Fraunces, serif", fontSize: 20, fontWeight: 600 }}>{rub(P.owner)}</div>
+                <div className="num big-num" style={{ fontFamily: "Fraunces, serif", fontSize: 20, fontWeight: 600 }}>{rub(P.owner)}</div>
               </div>
               <div style={{ background: C.paper, borderRadius: 10, padding: "12px 14px" }}>
                 <div style={{ fontSize: 12, color: C.muted }}>Партнёр · 40%</div>
-                <div className="num" style={{ fontFamily: "Fraunces, serif", fontSize: 20, fontWeight: 600 }}>{rub(P.partner)}</div>
+                <div className="num big-num" style={{ fontFamily: "Fraunces, serif", fontSize: 20, fontWeight: 600 }}>{rub(P.partner)}</div>
               </div>
             </div>
           </div>
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, padding: "16px 20px" }}>
+            <div style={{ fontSize: 13, color: C.muted, marginBottom: 6 }}>Выполнено заказов за период</div>
+            <div className="num" style={{ fontFamily: "Fraunces, serif", fontSize: 26, fontWeight: 600 }}>{rub(doneSum)}</div>
+            <div style={{ fontSize: 12.5, color: C.muted, marginTop: 4 }}>{doneCount} заказ(ов) · оплаченные и нет</div>
+          </div>
           <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, padding: "16px 20px" }}>
             <div style={{ fontSize: 13, color: C.muted, marginBottom: 6 }}>Дебиторка · не оплачено</div>
             <div className="num" style={{ fontFamily: "Fraunces, serif", fontSize: 26, fontWeight: 600, color: debt.length ? C.red : C.muted }}>{rub(debtSum)}</div>
