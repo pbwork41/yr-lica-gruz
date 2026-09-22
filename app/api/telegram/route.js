@@ -6,6 +6,7 @@ import { buildUpd } from "../../../lib/pdf/upd";
 import { calcOrderJs } from "../../../lib/calcServer";
 import { fmtDateRu } from "../../../lib/pdf/helpers";
 import { transcribe, parseIntent } from "../../../lib/voice";
+import { parseCompanyText, parseCompanyImage, tgFileToDataUrl } from "../../../lib/company";
 
 export const runtime = "nodejs";
 
@@ -144,6 +145,34 @@ export async function POST(req) {
         await handleNL(db, chatId, "", { step: "nl", draft });
         return ok();
       }
+      // карточка компании
+      if (data === "co:create" || data === "co:update" || data === "co:cancel") {
+        const d = sess.draft || {};
+        if (data === "co:cancel") {
+          await clearSession(db, chatId);
+          await tgSend(TOKEN, chatId, "Отменено.");
+          return ok();
+        }
+        const cp = d.cp || {};
+        if (data === "co:update" && d.existing_id) {
+          // обновляем только непустые поля, ставки не трогаем
+          const patch = {};
+          for (const k of ["name","inn","kpp","legal_address","bank_name","bank_account","corr_account","bank_bik","contact_person","contact_phone","contact_email"]) {
+            if (cp[k]) patch[k] = cp[k];
+          }
+          const { error } = await db.from("counterparties").update(patch).eq("id", d.existing_id);
+          await clearSession(db, chatId);
+          if (error) { await tgSend(TOKEN, chatId, "Ошибка обновления: " + error.message); return ok(); }
+          await tgSend(TOKEN, chatId, `🔄 Реквизиты «${cp.name}» обновлены.\nСтавки не тронуты — задайте на сайте, если нужно.`);
+          return ok();
+        }
+        // создать нового
+        const { error } = await db.from("counterparties").insert({ ...cp, is_active: true, vat_mode: "included" });
+        await clearSession(db, chatId);
+        if (error) { await tgSend(TOKEN, chatId, "Ошибка создания: " + error.message); return ok(); }
+        await tgSend(TOKEN, chatId, `✅ Контрагент «${cp.name}» добавлен.\nСтавки (час, контейнер 20/40) задайте на сайте или скажите мне.`);
+        return ok();
+      }
       // документы
       if (data.startsWith("doc:")) {
         const [, type, orderId] = data.split(":");
@@ -180,6 +209,37 @@ export async function POST(req) {
     }
 
     const sess = await getSession(db, chatId);
+
+    // ── Карточка компании: фото / документ / пересланный текст с реквизитами ──
+    const photo = msg.photo ? msg.photo[msg.photo.length - 1] : null; // самое большое фото
+    const docFile = msg.document; // файл-документ
+    const isImageDoc = docFile && /image\//.test(docFile.mime_type || "");
+    if (photo || isImageDoc) {
+      if (!OPENAI_KEY) { await tgSend(TOKEN, chatId, "Распознавание не настроено (нет ключа)."); return ok(); }
+      await tgSend(TOKEN, chatId, "📇 Разбираю карточку компании…");
+      try {
+        const fileId = photo ? photo.file_id : docFile.file_id;
+        const mime = photo ? "image/jpeg" : (docFile.mime_type || "image/jpeg");
+        const dataUrl = await tgFileToDataUrl(TOKEN, fileId, mime);
+        const fields = await parseCompanyImage(dataUrl, OPENAI_KEY);
+        await handleCompany(db, chatId, fields);
+      } catch (e) {
+        await tgSend(TOKEN, chatId, "Ошибка разбора карточки: " + e.message);
+      }
+      return ok();
+    }
+    // Текстовая карточка: длинный текст с ИНН — трактуем как реквизиты
+    if (text && /\bИНН\b/i.test(text) && /\d{10,12}/.test(text) && text.length > 40 && !text.startsWith("/")) {
+      if (!OPENAI_KEY) { await tgSend(TOKEN, chatId, "Распознавание не настроено (нет ключа)."); return ok(); }
+      await tgSend(TOKEN, chatId, "📇 Разбираю реквизиты…");
+      try {
+        const fields = await parseCompanyText(text, OPENAI_KEY);
+        await handleCompany(db, chatId, fields);
+      } catch (e) {
+        await tgSend(TOKEN, chatId, "Ошибка разбора: " + e.message);
+      }
+      return ok();
+    }
 
     // ── Голосовое или разговорный текст → разбор через GPT ──
     // голос: распознаём в текст
@@ -234,6 +294,7 @@ export async function POST(req) {
         "🎤 «Сделай счёт на КДВ на шестнадцать пятьсот»\n" +
         "🎤 «Заявка на Все Краски, контейнер 40, 14000, выплата 7000, безнал»\n\n" +
         "Чего не хватит — спрошу. Отвечать можно голосом или текстом.\n\n" +
+        "📇 Пришлите карточку компании (фото, PDF-скан или текст с реквизитами) — добавлю контрагента сам.\n\n" +
         "Ещё: /zayavka — по шагам, /dolgi — долги, /svodka — сводка.");
       return ok();
     }
@@ -280,6 +341,59 @@ export async function POST(req) {
 }
 
 // ── Разговорный диалог: разбор, доспрос недостающего, создание + документы ──
+// ── Карточка компании: проверка по ИНН, создание/обновление ──
+async function handleCompany(db, chatId, f) {
+  if (!f || !f.name) {
+    await tgSend(TOKEN, chatId, "Не смог распознать реквизиты. Пришлите карточку почётче или добавьте контрагента на сайте.");
+    return;
+  }
+  const clean = (v) => (v == null ? null : String(v).replace(/\s/g, "") || null);
+  const cp = {
+    name: f.name.trim(),
+    inn: clean(f.inn), kpp: clean(f.kpp),
+    legal_address: f.legal_address || null,
+    bank_name: f.bank_name || null,
+    bank_account: clean(f.bank_account),
+    corr_account: clean(f.corr_account),
+    bank_bik: clean(f.bank_bik),
+    contact_person: f.contact_person || null,
+    contact_phone: f.contact_phone || null,
+    contact_email: f.contact_email || null,
+  };
+
+  // ищем по ИНН
+  let existing = null;
+  if (cp.inn) {
+    const { data } = await db.from("counterparties").select("id,name,inn").eq("inn", cp.inn).maybeSingle();
+    existing = data || null;
+  }
+
+  // сохраняем разобранное в сессию для подтверждения
+  await setSession(db, chatId, "company_confirm", { cp, existing_id: existing?.id || null });
+
+  let out = "📇 Распознал реквизиты:\n";
+  out += `• Название: <b>${cp.name}</b>\n`;
+  if (cp.inn) out += `• ИНН: ${cp.inn}\n`;
+  if (cp.kpp) out += `• КПП: ${cp.kpp}\n`;
+  if (cp.legal_address) out += `• Адрес: ${cp.legal_address}\n`;
+  if (cp.bank_name) out += `• Банк: ${cp.bank_name}\n`;
+  if (cp.bank_account) out += `• Р/с: ${cp.bank_account}\n`;
+  if (cp.bank_bik) out += `• БИК: ${cp.bank_bik}\n`;
+
+  if (existing) {
+    out += `\n⚠️ Контрагент с таким ИНН уже есть: <b>${existing.name}</b>`;
+    await tgSend(TOKEN, chatId, out, inlineKb([
+      [{ text: "🔄 Обновить реквизиты", data: "co:update" }],
+      [{ text: "➕ Создать нового", data: "co:create" }, { text: "❌ Отмена", data: "co:cancel" }],
+    ]));
+  } else {
+    out += `\nСоздать контрагента?`;
+    await tgSend(TOKEN, chatId, out, inlineKb([
+      [{ text: "✅ Создать", data: "co:create" }, { text: "❌ Отмена", data: "co:cancel" }],
+    ]));
+  }
+}
+
 async function handleNL(db, chatId, nlText, sess) {
   const { data: cps } = await db.from("counterparties").select("id,name").eq("is_active", true);
   const known = (sess.draft && sess.step === "nl") ? sess.draft : {};
