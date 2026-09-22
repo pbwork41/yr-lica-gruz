@@ -4,27 +4,29 @@ import { calcOrder, rub, rub2, fmtDate, WORK_TYPES } from "../lib/calc";
 import { C, Field, Box, Row, SearchSelect } from "./ui";
 import { supabase } from "../lib/supabase";
 
-async function openDocument(orderId, type, withSign) {
-  try {
-    const { data } = await supabase.auth.getSession();
-    const token = data?.session?.access_token;
-    const res = await fetch("/api/document", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ order_id: orderId, type, withSign, token }),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      alert("Ошибка формирования документа: " + (err.error || res.status));
-      return;
-    }
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    window.open(url, "_blank");
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
-  } catch (e) {
-    alert("Ошибка: " + e.message);
+async function downloadDocument(orderId, type, withSign) {
+  const { data } = await supabase.auth.getSession();
+  const token = data?.session?.access_token;
+  const res = await fetch("/api/document", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ order_id: orderId, type, withSign, token }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || res.status);
   }
+  // имя файла из заголовка
+  let name = `${type}.pdf`;
+  const cd = res.headers.get("Content-Disposition") || "";
+  const m = cd.match(/filename\*=UTF-8''([^;]+)/);
+  if (m) { try { name = decodeURIComponent(m[1]); } catch {} }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
 function blankOrder() {
@@ -127,30 +129,52 @@ export default function Orders({ rows, cps, onSave, onDelete }) {
 }
 
 function DocButtons({ r }) {
+  const [sel, setSel] = useState({ invoice: true, act: true, upd: false });
   const [withSign, setWithSign] = useState(true);
-  const [busy, setBusy] = useState("");
-  const make = async (type) => {
-    setBusy(type);
-    await openDocument(r.id, type, withSign);
-    setBusy("");
+  const [busy, setBusy] = useState(false);
+
+  const toggle = (k) => setSel((s) => ({ ...s, [k]: !s[k] }));
+  const chosen = Object.keys(sel).filter((k) => sel[k]);
+
+  const download = async () => {
+    if (!chosen.length) return;
+    setBusy(true);
+    try {
+      for (const type of chosen) {
+        await downloadDocument(r.id, type, withSign);
+        await new Promise((res) => setTimeout(res, 400)); // пауза между скачиваниями
+      }
+    } catch (e) {
+      alert("Ошибка формирования документа: " + e.message);
+    }
+    setBusy(false);
   };
-  const btn = (type, label) => (
-    <button onClick={() => make(type)} disabled={!!busy}
-      style={{ border: `1px solid ${C.moss}`, background: C.mossSoft, color: C.moss, borderRadius: 8, padding: "7px 14px", cursor: busy ? "wait" : "pointer", fontSize: 13, fontWeight: 600, opacity: busy && busy !== type ? 0.5 : 1 }}>
-      {busy === type ? "…" : label}
-    </button>
+
+  const docCheck = (k, label) => (
+    <label className={"chk" + (sel[k] ? " on" : "")} onClick={() => toggle(k)}
+      style={{ borderColor: sel[k] ? C.moss : C.line }}>
+      <Box on={sel[k]} /> {label}
+    </label>
   );
+
   return (
     <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px dashed ${C.line}` }}>
-      <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 8, fontWeight: 600 }}>Документы {r.invoice_number ? `· № ${r.invoice_number}` : "· номер присвоится при формировании"}</div>
+      <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 8, fontWeight: 600 }}>
+        Документы {r.invoice_number ? `· № ${r.invoice_number}` : "· номер присвоится при формировании"}
+      </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        {btn("invoice", "Счёт")}
-        {btn("act", "Акт")}
-        {btn("upd", "УПД")}
-        <label className="chk" style={{ borderColor: withSign ? C.moss : C.line, marginLeft: 4 }} onClick={() => setWithSign(!withSign)}>
+        {docCheck("invoice", "Счёт")}
+        {docCheck("act", "Акт")}
+        {docCheck("upd", "УПД")}
+        <span style={{ width: 1, height: 24, background: C.line, margin: "0 2px" }} />
+        <label className="chk" style={{ borderColor: withSign ? C.moss : C.line }} onClick={() => setWithSign(!withSign)}>
           <Box on={withSign} /> с подписью
         </label>
       </div>
+      <button onClick={download} disabled={busy || !chosen.length}
+        style={{ marginTop: 10, background: chosen.length ? C.moss : C.line, color: "#fff", border: "none", borderRadius: 9, padding: "9px 18px", fontSize: 14, fontWeight: 600, cursor: busy || !chosen.length ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1 }}>
+        {busy ? "Формирую…" : `Скачать выбранные${chosen.length ? " (" + chosen.length + ")" : ""}`}
+      </button>
     </div>
   );
 }
