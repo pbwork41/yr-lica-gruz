@@ -146,6 +146,30 @@ export async function POST(req) {
         return ok();
       }
       // карточка компании
+      // прикрепить реквизиты к выбранному контрагенту — показать список
+      if (data === "co:attach") {
+        const { data: cps } = await db.from("counterparties").select("id,name,inn").eq("is_active", true).order("name").limit(30);
+        if (!cps || !cps.length) { await tgSend(TOKEN, chatId, "Нет контрагентов для привязки."); return ok(); }
+        await tgSend(TOKEN, chatId, "К какому контрагенту прикрепить реквизиты?",
+          inlineKb(cps.map((c) => [{ text: c.name + (c.inn ? ` (${c.inn})` : ""), data: `coatt:${c.id}` }])));
+        return ok();
+      }
+      // прикрепить к конкретному
+      if (data.startsWith("coatt:")) {
+        const targetId = data.slice(6);
+        const cp = (sess.draft && sess.draft.cp) || {};
+        const patch = {};
+        for (const k of ["name","inn","kpp","legal_address","bank_name","bank_account","corr_account","bank_bik","contact_person","contact_phone","contact_email"]) {
+          if (cp[k]) patch[k] = cp[k];
+        }
+        // при привязке к существующему НЕ перезаписываем название (оставляем как у него), только реквизиты
+        delete patch.name;
+        const { data: target, error } = await db.from("counterparties").update(patch).eq("id", targetId).select("name").single();
+        await clearSession(db, chatId);
+        if (error) { await tgSend(TOKEN, chatId, "Ошибка: " + error.message); return ok(); }
+        await tgSend(TOKEN, chatId, `📎 Реквизиты прикреплены к «${target?.name || ""}».\nНазвание и ставки не тронуты.`);
+        return ok();
+      }
       if (data === "co:create" || data === "co:update" || data === "co:cancel") {
         const d = sess.draft || {};
         if (data === "co:cancel") {
@@ -384,12 +408,15 @@ async function handleCompany(db, chatId, f) {
     out += `\n⚠️ Контрагент с таким ИНН уже есть: <b>${existing.name}</b>`;
     await tgSend(TOKEN, chatId, out, inlineKb([
       [{ text: "🔄 Обновить реквизиты", data: "co:update" }],
+      [{ text: "📎 Прикрепить к другому", data: "co:attach" }],
       [{ text: "➕ Создать нового", data: "co:create" }, { text: "❌ Отмена", data: "co:cancel" }],
     ]));
   } else {
     out += `\nСоздать контрагента?`;
     await tgSend(TOKEN, chatId, out, inlineKb([
-      [{ text: "✅ Создать", data: "co:create" }, { text: "❌ Отмена", data: "co:cancel" }],
+      [{ text: "✅ Создать нового", data: "co:create" }],
+      [{ text: "📎 Прикрепить к действующему", data: "co:attach" }],
+      [{ text: "❌ Отмена", data: "co:cancel" }],
     ]));
   }
 }
