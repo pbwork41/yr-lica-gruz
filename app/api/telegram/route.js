@@ -5,10 +5,12 @@ import { buildAct } from "../../../lib/pdf/act";
 import { buildUpd } from "../../../lib/pdf/upd";
 import { calcOrderJs } from "../../../lib/calcServer";
 import { fmtDateRu } from "../../../lib/pdf/helpers";
+import { transcribe, parseIntent } from "../../../lib/voice";
 
 export const runtime = "nodejs";
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const OPENAI_KEY = process.env.OPENAI_API_KEY;
 
 function sb() {
   return createClient(
@@ -126,6 +128,22 @@ export async function POST(req) {
         const orderId = await createOrder(db, chatId, draft);
         return ok();
       }
+      // продолжение разговорного диалога (nl)
+      if (data.startsWith("nlcp:")) {
+        const draft = { ...(sess.draft || {}), counterparty_id: data.slice(5), counterparty_name: null };
+        await handleNL(db, chatId, "", { step: "nl", draft });
+        return ok();
+      }
+      if (data.startsWith("nlwork:")) {
+        const draft = { ...(sess.draft || {}), work_type: data.slice(7) };
+        await handleNL(db, chatId, "", { step: "nl", draft });
+        return ok();
+      }
+      if (data.startsWith("nlpay:")) {
+        const draft = { ...(sess.draft || {}), payment_method: data.slice(6) };
+        await handleNL(db, chatId, "", { step: "nl", draft });
+        return ok();
+      }
       // документы
       if (data.startsWith("doc:")) {
         const [, type, orderId] = data.split(":");
@@ -163,6 +181,30 @@ export async function POST(req) {
 
     const sess = await getSession(db, chatId);
 
+    // ── Голосовое или разговорный текст → разбор через GPT ──
+    // голос: распознаём в текст
+    let nlText = null;
+    if (msg.voice || msg.audio) {
+      if (!OPENAI_KEY) { await tgSend(TOKEN, chatId, "Распознавание не настроено (нет ключа)."); return ok(); }
+      await tgSend(TOKEN, chatId, "🎧 Распознаю…");
+      try {
+        nlText = await transcribe(TOKEN, (msg.voice || msg.audio).file_id, OPENAI_KEY);
+      } catch (e) { await tgSend(TOKEN, chatId, "Ошибка распознавания: " + e.message); return ok(); }
+      if (!nlText.trim()) { await tgSend(TOKEN, chatId, "Не расслышал. Повторите."); return ok(); }
+    } else if (sess.step === "nl" && text && !text.startsWith("/")) {
+      // мы в разговорном диалоге — обычный текст трактуем как ответ
+      nlText = text;
+    } else if (OPENAI_KEY && text && !text.startsWith("/") && sess.step !== "revenue" && sess.step !== "payout" &&
+               /(счёт|счет|акт|упд|заявк|контейнер|сделай|выстав)/i.test(text)) {
+      // свободный текст с признаками заявки — тоже в разговорный режим
+      nlText = text;
+    }
+
+    if (nlText) {
+      await handleNL(db, chatId, nlText, sess);
+      return ok();
+    }
+
     // ожидаем ввод суммы?
     if (sess.step === "revenue" && /^\d[\d\s]*$/.test(text)) {
       const revenue = parseInt(text.replace(/\s/g, ""), 10);
@@ -188,7 +230,11 @@ export async function POST(req) {
         "/zayavka — создать заявку\n" +
         "/dolgi — неоплаченные\n" +
         "/svodka — сводка за неделю\n\n" +
-        "Заявка создаётся по шагам с кнопками.");
+        "Просто скажите или напишите, что нужно:\n" +
+        "🎤 «Сделай счёт на КДВ на шестнадцать пятьсот»\n" +
+        "🎤 «Заявка на Все Краски, контейнер 40, 14000, выплата 7000, безнал»\n\n" +
+        "Чего не хватит — спрошу. Отвечать можно голосом или текстом.\n\n" +
+        "Ещё: /zayavka — по шагам, /dolgi — долги, /svodka — сводка.");
       return ok();
     }
     if (text === "/zayavka" || text === "/заявка") {
@@ -233,7 +279,92 @@ export async function POST(req) {
   }
 }
 
-async function createOrder(db, chatId, draft) {
+// ── Разговорный диалог: разбор, доспрос недостающего, создание + документы ──
+async function handleNL(db, chatId, nlText, sess) {
+  const { data: cps } = await db.from("counterparties").select("id,name").eq("is_active", true);
+  const known = (sess.draft && sess.step === "nl") ? sess.draft : {};
+  let parsed;
+  if (nlText && nlText.trim()) {
+    try {
+      parsed = await parseIntent(nlText, cps || [], known, OPENAI_KEY);
+    } catch (e) {
+      await tgSend(TOKEN, chatId, "Не смог разобрать: " + e.message);
+      return;
+    }
+  } else {
+    // пустой ввод (после кнопки) — работаем с уже известным
+    parsed = { ...known, documents: known.documents || [] };
+  }
+
+  // накопленный черновик
+  const draft = {
+    counterparty_id: parsed.counterparty_id || known.counterparty_id || null,
+    counterparty_name: parsed.counterparty_name || known.counterparty_name || null,
+    work_type: parsed.work_type || known.work_type || null,
+    revenue: parsed.revenue != null ? parsed.revenue : (known.revenue ?? null),
+    payout: parsed.payout != null ? parsed.payout : (known.payout ?? null),
+    payment_method: parsed.payment_method || known.payment_method || null,
+    documents: (parsed.documents && parsed.documents.length) ? parsed.documents : (known.documents || []),
+  };
+
+  // чего не хватает (для полной заявки нужны все поля)
+  const ask = (field, question, kb) => { setSession(db, chatId, "nl", draft); return tgSend(TOKEN, chatId, question, kb); };
+
+  if (!draft.counterparty_id) {
+    if (draft.counterparty_name) {
+      // назвали, но не нашли — предложим список
+      await setSession(db, chatId, "nl", draft);
+      await tgSend(TOKEN, chatId, `Не нашёл «${draft.counterparty_name}». Выберите контрагента:`,
+        inlineKb((cps || []).map((c) => [{ text: c.name, data: `nlcp:${c.id}` }])));
+    } else {
+      await setSession(db, chatId, "nl", draft);
+      await tgSend(TOKEN, chatId, "Для кого заявка? Выберите контрагента:",
+        inlineKb((cps || []).map((c) => [{ text: c.name, data: `nlcp:${c.id}` }])));
+    }
+    return;
+  }
+  const cpName = (cps.find((c) => c.id === draft.counterparty_id) || {}).name || "";
+  if (!draft.work_type) {
+    await setSession(db, chatId, "nl", draft);
+    await tgSend(TOKEN, chatId, `${cpName}. Вид работ?`, inlineKb([
+      [{ text: "Контейнер 20", data: "nlwork:container_20" }, { text: "Контейнер 40", data: "nlwork:container_40" }],
+      [{ text: "Почасовые", data: "nlwork:hourly" }, { text: "Склад", data: "nlwork:warehouse" }],
+    ]));
+    return;
+  }
+  if (draft.revenue == null) {
+    await setSession(db, chatId, "nl", draft);
+    await tgSend(TOKEN, chatId, "На какую сумму? (₽) — скажите или напишите число.");
+    return;
+  }
+  if (draft.payout == null) {
+    await setSession(db, chatId, "nl", draft);
+    await tgSend(TOKEN, chatId, "Выплата исполнителям? (₽) — число, или скажите «ноль».");
+    return;
+  }
+  if (!draft.payment_method) {
+    await setSession(db, chatId, "nl", draft);
+    await tgSend(TOKEN, chatId, "Форма расчёта?", inlineKb([[{ text: "Безнал", data: "nlpay:cashless" }, { text: "Наличные", data: "nlpay:cash" }]]));
+    return;
+  }
+
+  // всё есть — создаём заявку и выдаём документы (если просили)
+  await finalizeNL(db, chatId, draft);
+}
+
+async function finalizeNL(db, chatId, draft) {
+  const orderId = await createOrder(db, chatId, draft, true);
+  if (!orderId) return;
+  const docs = draft.documents || [];
+  if (docs.length) {
+    await tgSend(TOKEN, chatId, "Формирую документы…");
+    for (const t of docs) {
+      try { await sendDoc(db, chatId, orderId, t, true); } catch (e) { await tgSend(TOKEN, chatId, "Ошибка документа: " + e.message); }
+    }
+  }
+}
+
+async function createOrder(db, chatId, draft, silentDocsKb) {
   const payload = {
     order_date: new Date().toISOString().slice(0, 10),
     counterparty_id: draft.counterparty_id,
